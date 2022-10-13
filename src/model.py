@@ -1,4 +1,4 @@
-from unittest.util import strclass
+from pathlib import Path
 from transformers import (
     AutoModel,
     AutoTokenizer,
@@ -7,6 +7,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 import random
+import os
 import json
 from accelerate import Accelerator
 import numpy as np
@@ -178,7 +179,7 @@ def train(args):
     ce_model.train()
     progress_bar = tqdm(range(args.num_epochs),desc="Epoch", position=0)
     train_progress_bar = tqdm(trainloader,desc="Train Loop", position=1)
-    test_progress_bar = tqdm(testloader,desc="Eval Loop", position=1)
+    test_progress_bar = tqdm(testloader,desc="Eval Loop", position=2)
     steps = 0
     for epoch in progress_bar:
         epoch_train_loss = 0.0
@@ -218,14 +219,16 @@ def train(args):
         progress_bar.update(1)               
         accelerator.wait_for_everyone()
         unwrapped_model = accelerator.unwrap_model(ce_model)
-
+        accelerator.print(f"Sucessfully saved model and tokenizer in {args.output_dir}")
         torch.save(unwrapped_model,args.output_dir+"/ce_model.pt")
+
+
         if accelerator.is_main_process:
-            accelerator.print(f"Sucessfully saved model and tokenizer in {args.output_dir}")
             tokenizer.save_pretrained(args.output_dir)
             config.save_pretrained(args.output_dir)
-        if args.if_wandb:
-            accelerator.end_training()
+    
+    
+    accelerator.end_training()
 
 
 
@@ -249,24 +252,28 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(__name__)
     
     parser.add_argument("--model_name", type=str, default="microsoft/codebert-base")
-    parser.add_argument("--dataset_file_path",type=str,default="dataset/CodeReviewSE_Trial.json")
+    parser.add_argument("--dataset_file_path",type=str,default="dataset/CodeReviewSE_CrossEncoder.json")
     parser.add_argument("--dataset_flag",type=str,default="ce")
     parser.add_argument("--random_seed", type=int, default=42)
-    parser.add_argument("--num_epochs", type=int, default=3)
-    parser.add_argument("--if_wandb", type=bool, default=False)
+    parser.add_argument("--num_epochs", type=int, default=25)
+    parser.add_argument("--if_wandb", type=bool, default=True)
     
-    parser.add_argument("--warmup_steps", type=int, default=10)
+    parser.add_argument("--warmup_steps", type=int, default=1000)
 
     parser.add_argument('--lr', type=float, default=1e-5, help="learning rate (default: 1e-5)")
 
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="gradient accumulation steps (default: 1)")
-    parser.add_argument("--output_dir",type=str,default="trained_models")
-    parser.add_argument("--batch_size",type=int,default=2)
+    parser.add_argument("--output_dir",type=str,default="trained_models/codebert_base_unaligned")
+    parser.add_argument("--batch_size",type=int,default=16)
 
 
     args = parser.parse_args()
-    
+    # if not os.path.exists(args.output_dir):
+    #     os.mkdir(args.output_dir)
+    pdout = Path(args.output_dir).resolve()
+    pdout.mkdir(exist_ok=True, parents=True)
+
     #TODO(reshinth) : Set seed function
     set_seed(args.random_seed)
     train(args)
