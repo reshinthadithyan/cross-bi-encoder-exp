@@ -107,6 +107,7 @@ class CodeReviewDataset(Dataset):
                         is_accepted = 0
                 else:
                     is_accepted = 0
+
                 datapoint_dict = {
                     "title": title,
                     "question_desc" : question_desc,
@@ -114,7 +115,10 @@ class CodeReviewDataset(Dataset):
                     "answer_desc" : answer_desc,
                     "answer_code_block":  answer_code_block,
                     "norm_score": norm_score,
-                    "is_accepted": is_accepted
+                    "score" : answer["meta_data"]["Score"],
+                    "is_accepted": is_accepted,
+                    "id" : datapoint["meta_data"]["Id"],
+                    "answer_id" : answer["meta_data"]["Id"]
                 }
                 self.dataset_list.append(datapoint_dict)
                 self.pass_count += 1
@@ -122,7 +126,7 @@ class CodeReviewDataset(Dataset):
             pass
 
 
-    def process_dataset(self,output_path:str="data/CodeReviewSE_CrossEncoder.json"):
+    def process_dataset(self,output_path:str="dataset/CodeReviewSE_CrossEncoder.json"):
 
         for datapoint_index in tqdm(self.dataset_keys):
             datapoint_dict = self.dataset[datapoint_index]
