@@ -162,8 +162,11 @@ def train(args):
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
     )
-
-    accelerator = Accelerator()
+    if args.if_wandb:
+        accelerator = Accelerator(log_with="wandb")
+        accelerator.init_trackers(project_name="crossencoder")
+    else:
+        accelerator = Accelerator()
     device = accelerator.device
     accelerator.print(f"Model : {args.model_name}")
 
@@ -176,7 +179,7 @@ def train(args):
     progress_bar = tqdm(range(args.num_epochs),desc="Epoch", position=0)
     train_progress_bar = tqdm(trainloader,desc="Train Loop", position=1)
     test_progress_bar = tqdm(testloader,desc="Eval Loop", position=1)
-
+    steps = 0
     for epoch in progress_bar:
         epoch_train_loss = 0.0
         epoch_test_loss = 0.0
@@ -190,15 +193,28 @@ def train(args):
             scheduler.step()         
             optimizer.zero_grad()
             epoch_train_loss += loss.item()
+            if args.if_wandb:
+                accelerator.log({"train_loss":loss})
+
+
         ce_model.eval()  
         for batch in test_progress_bar:
             with torch.no_grad():
                 pooled_output,logits = ce_model(**batch[0])
                 loss = loss_fn(logits, batch[1])
                 epoch_test_loss += loss.item()    
+                if args.if_wandb:
+                    accelerator.log({"eval_loss":loss})
+
 
     
-        accelerator.print(f"Epoch {epoch}/{args.num_epochs} Training Loss :  {epoch_train_loss} Eval Loss : {epoch_test_loss}")
+        accelerator.print(f"Epoch {epoch}/{args.num_epochs} Training Loss :  {epoch_train_loss/len(trainloader)} Eval Loss : {epoch_test_loss/len(trainloader)} Eval Loss : {epoch_test_loss/len(testloader)}")
+
+        if args.if_wandb:
+            accelerator.log({
+                "train_epoch_loss" : epoch_train_loss/len(trainloader),
+                "eval_epoch_loss": epoch_test_loss/len(testloader)
+            })
         progress_bar.update(1)               
         accelerator.wait_for_everyone()
         unwrapped_model = accelerator.unwrap_model(ce_model)
@@ -208,6 +224,8 @@ def train(args):
             accelerator.print(f"Sucessfully saved model and tokenizer in {args.output_dir}")
             tokenizer.save_pretrained(args.output_dir)
             config.save_pretrained(args.output_dir)
+        if args.if_wandb:
+            accelerator.end_training()
 
 
 
@@ -235,13 +253,15 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_flag",type=str,default="ce")
     parser.add_argument("--random_seed", type=int, default=42)
     parser.add_argument("--num_epochs", type=int, default=3)
+    parser.add_argument("--if_wandb", type=bool, default=False)
+    
     parser.add_argument("--warmup_steps", type=int, default=10)
 
     parser.add_argument('--lr', type=float, default=1e-5, help="learning rate (default: 1e-5)")
 
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="gradient accumulation steps (default: 1)")
-    parser.add_argument("--output_dir",type=str,default="./trained_models")
+    parser.add_argument("--output_dir",type=str,default="trained_models")
     parser.add_argument("--batch_size",type=int,default=2)
 
 
